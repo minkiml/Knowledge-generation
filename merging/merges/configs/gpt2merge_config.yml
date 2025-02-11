@@ -1,0 +1,26 @@
+
+network: "gpt2" # specific network name or set it to huggingface_trf (in case the models are from huggingface)
+batch: 256 # use small (merging) batch size for sequence models
+batch_for_sim: 32 # or use small sub-batch size 
+
+# Alignment args
+align: true
+align_method: "Permutation" 
+align_type: "AM"
+permutation_based: true # false is not supported yet
+embeddings: false
+prec_residuals: false
+qk_perm: false # qk inner permutation is not supported yet.
+subset_portion: 0.4 
+
+# Matching args
+merge_method: "average"
+
+
+# Define later
+
+# Network 
+
+# data_path:
+# model: 
+# 

@@ -1,0 +1,8 @@
+matplotlib==3.8.2
+scipy==1.11.4
+scikit-base==0.6.1
+scikit-learn==1.3.2
+seaborn==0.13.0
+sktime==0.24.1
+
+git+https://github.com/minkiml/transformers-4-merge.git@feature/explicit_skipc
