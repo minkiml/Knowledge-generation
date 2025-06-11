@@ -11,7 +11,8 @@ def load_model(model, model_path, model_name, loc_ = None, g_logger = None):
     if not speficied model is tried to be drawn from defalu path (model path)'''
     try:
         model.load_state_dict(
-                            torch.load( loc_ if loc_ is not None else os.path.join(str(model_path), f'_checkpoint_{model_name}.pth') ))
+                            torch.load( loc_ if loc_ is not None else os.path.join(str(model_path), f'_checkpoint_{model_name}.pth'), 
+                                       weights_only=True ), strict=True)
         g_logger.info("Pretrained model has been successfully loded")
         return model, False
     except:    
@@ -43,7 +44,9 @@ def merge_dataloader(dataloader_A: DataLoader, # conventional dataloader object
                      dataloader_B: DataLoader,
                      
                      batch_size = 256,
-                     subset_p = 1. # e.g., (smaller) 40 % from each dataset is combined  
+                     subset_p = 1., # e.g., (smaller) 40 % from each dataset is combined  
+                     drop_last = True,
+                     shuffle = True
                      ):
     ''' Combine dataloaders into single mixture dataloader '''
     if subset_p < 1.:
@@ -58,8 +61,8 @@ def merge_dataloader(dataloader_A: DataLoader, # conventional dataloader object
         # Total sets
         subset_A = dataloader_A.dataset
         subset_B = dataloader_B.dataset
-    return DataLoader(ConcatDataset([subset_A, subset_B]), batch_size=batch_size, shuffle=True,
-                      drop_last= True)
+    return DataLoader(ConcatDataset([subset_A, subset_B]), batch_size=batch_size, shuffle=shuffle,
+                      drop_last= drop_last)
 
 def merge_data_iter(*data_loader):
     """Put multiple dataloaders into a tuple of iterables."""

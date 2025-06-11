@@ -1,0 +1,20 @@
+
+Variables
+
+1. depth of transformations & hidden dim
+
+2. embeddings - 1) random 2) absolute 3) relative 
+
+3. ffsigma in embeddings - 
+
+4. lr & training epoch
+
+5. transformation iteration
+
+6. initial theta and model delth of theta
+
+7. rank 
+
+8. loss of recon & predictive learning 
+
+9. Trnasformation type 

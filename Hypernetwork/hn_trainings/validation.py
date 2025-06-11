@@ -6,7 +6,8 @@ import copy
 from merging.merges.utils import BatchNorm2d
 from torch import nn
 from merging.merges import utils
-def vali(f, data_loader_test, device, yield_loss = False):
+def prediction_vali(f, data_loader_test, device, yield_loss = False):
+    f.implicitnet_train(False)
     f.train(False)
     with torch.no_grad():
         for i, batches in enumerate(zip(*data_loader_test)):
@@ -17,7 +18,7 @@ def vali(f, data_loader_test, device, yield_loss = False):
                 y = torch.cat((batches[0][1],batches[1][1]), dim = 0)
             input = x.to(device)######################
             y = y.to(device)
-            logit = f(input)
+            logit = f.forward_implicitnet(input)
             
             loss = F.cross_entropy(logit, y.detach(), label_smoothing=0.25)
             loss = loss.unsqueeze(0)
@@ -103,7 +104,7 @@ def inter_1d(model_a, model_b, testing_data,
                 averaged_state_dict[key] = (alpha * state_dict_b[key]) + ((1 - alpha) * state_dict_a[key])
             avg_model.load_state_dict(averaged_state_dict)
 
-        acc = vali(avg_model.to(device), testing_data= testing_data, device= device)
+        acc = prediction_vali(avg_model.to(device), testing_data= testing_data, device= device)
 
         acc_list.append(acc)
 

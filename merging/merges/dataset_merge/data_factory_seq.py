@@ -1,13 +1,28 @@
 import os
+import numpy as np
 import torch
 import torchvision
 import torchvision.transforms as transforms
-from torch.utils.data import Dataset, DataLoader
+import copy
+from torch.utils.data import Dataset, DataLoader,TensorDataset
 import logging
-from merges.dataset_merge.AutoAugmentation.autoaugment import CIFAR10Policy, SVHNPolicy
-from merges.dataset_merge.label_restructring import help_label_restructuring
+from merging.merges.dataset_merge.AutoAugmentation.autoaugment import CIFAR10Policy, SVHNPolicy
+from merging.merges.dataset_merge.label_restructring import help_label_restructuring
+from torch.utils.data import Subset
 # Discrete sequence exp datasets: sMNIST, pMNIST, sCIFAR-10,
+class WrappedTensorDataset(torch.utils.data.Dataset):
+    def __init__(self, tensors, transform=None):
+        self.tensors = tensors
+        self.transform = transform
 
+    def __getitem__(self, index):
+        x, y = self.tensors[0][index], self.tensors[1][index]
+        if self.transform:
+            x = self.transform(x)
+        return x, y
+
+    def __len__(self):
+        return len(self.tensors[0])
 class FlattenAndPerm(object):
     def __init__(self, perm_f, perm_ = False):
         self.perm_f = perm_f
@@ -19,7 +34,7 @@ class FlattenAndPerm(object):
             x = x[self.perm_f]
         return x
 
-class Sequential_dataset(object):
+class CV_data(object):
     def __init__(
                 # Loaded dataset
                 self, 
@@ -37,7 +52,9 @@ class Sequential_dataset(object):
                                  "random_crop_pase": False,
                                  "resize": False},
                 
-                multitasking = False
+                multitasking = False,
+                train_test = False,
+                fix_split_labels = False,
 
                                 ):
         # Global logger
@@ -47,7 +64,7 @@ class Sequential_dataset(object):
                             format = '%(asctime)s - %(name)s - %(message)s')
         self.logger = logging.getLogger('From Sequential_dataset')
 
-    
+        self.train_test =train_test
         self.path = path
         self.sub_dataset = sub_dataset
         self.num_workers = num_workers
@@ -57,7 +74,8 @@ class Sequential_dataset(object):
         self.sqs = sqs
         self.transform_set = transform_set
         self.multitasking = multitasking
-
+        self.fix_split_labels = fix_split_labels
+        
         self.imageresize = 64
         self.__read_and_construct__() 
     def __read_and_construct__(self):
@@ -284,13 +302,14 @@ class Sequential_dataset(object):
             test_sets = torchvision.datasets.SVHN(root=self.path, split='test', 
                             transform= test_transform, 
                             download=download_)
-            
+
         if self.multitasking:
             set_a_num = self.num_class // 2
             set_b_num = self.num_class - set_a_num
             [train_sets_A, test_sets_A, label_subset_A], [train_sets_B, test_sets_B, label_subset_B] = help_label_restructuring(train_sets, test_sets,
                                                                                                 total_label_num= self.num_class,
-                                                                                                split_p= [set_a_num, set_b_num])
+                                                                                                split_p= [set_a_num, set_b_num], 
+                                                                                                fixed_label_set=self.fix_split_labels)
 
             # Create a DataLoader to efficiently load the dataset in batches
             self.training_loader_A = DataLoader(train_sets_A, 
@@ -318,7 +337,43 @@ class Sequential_dataset(object):
                                             num_workers= self.num_workers,
                                             drop_last=False)
             self.num_class = set_a_num
+            self.training_loader_balanced = None
+        elif self.train_test:
+            self.training_loader_A = DataLoader(train_sets, 
+                                batch_size=self.batch_training, 
+                                shuffle=True,
+                                num_workers= self.num_workers,
+                                drop_last=True)
+            self.logger.info(f"Training {self.sub_dataset} data loader is constructed. The total number of mini-batches: {len(self.training_loader_A)}")
+        
+            self.testing_loader_A = DataLoader(test_sets, 
+                                            batch_size=self.batch_testing, 
+                                            shuffle=True,
+                                            num_workers= self.num_workers,
+                                            drop_last=False)
+            self.logger.info(f"Testing {self.sub_dataset} data loader is constructed. The total number of mini-batches: {len(self.testing_loader_A)}")
+            # training set for Balanced train&testing dataset
+            
+            # Compute number of test samples to remove
+            num_to_remove = len(test_sets)  
+            # Shuffle and remove the first `num_to_remove` samples from training set
+            indices = np.arange(len(train_sets))
+            np.random.shuffle(indices)
+            keep_indices = indices[num_to_remove:]
+            
+            reduced_train_sets = copy.deepcopy(train_sets)
+            reduced_train_sets.data = reduced_train_sets.data[keep_indices]
+            reduced_train_sets.targets = np.array(reduced_train_sets.targets)[keep_indices].tolist()
 
+            self.training_loader_balanced = DataLoader(reduced_train_sets, 
+                                            batch_size=self.batch_training, 
+                                            shuffle=True,
+                                            num_workers= self.num_workers,
+                                            drop_last=True)
+            self.logger.info(f"Training-testing {self.sub_dataset} data loader is constructed. The total number of mini-batches: {len(self.training_loader_balanced)}")
+            self.training_loader_B = None
+            self.testing_loader_B = None
+            del train_sets, test_sets
         else:
             # Create a DataLoader to efficiently load the dataset in batches
             self.training_loader_A = DataLoader(train_sets, 
@@ -335,17 +390,18 @@ class Sequential_dataset(object):
             
             self.training_loader_B = None
             self.testing_loader_B = None
-
+            self.training_loader_balanced = None
             del train_sets, test_sets
 
-        self.logger.info(f"Training {self.sub_dataset} data loader is constructed. The total number of mini-batches: {len(self.training_loader_A)}")
-        self.logger.info(f"Testing {self.sub_dataset} data loader is constructed. The total number of mini-batches: {len(self.testing_loader_A)}")
+        if not self.train_test:
+            self.logger.info(f"Training {self.sub_dataset} data loader is constructed. The total number of mini-batches: {len(self.training_loader_A)}")
+            self.logger.info(f"Testing {self.sub_dataset} data loader is constructed. The total number of mini-batches: {len(self.testing_loader_A)}")
 
         if self.multitasking:
             self.logger.info(f"Training 'subset B' {self.sub_dataset} data loader is constructed. The total number of mini-batches: {len(self.training_loader_B)}")
             self.logger.info(f"Testing 'subset B' {self.sub_dataset} data loader is constructed. The total number of mini-batches: {len(self.testing_loader_B)}")
             self.logger.info(f"The subset A has labels {label_subset_A} and the subset B has labels {label_subset_B}")
-
+       
         self.logger.info(f"No validation dataset")
 
     def __get_training_loader__(self):
@@ -354,6 +410,7 @@ class Sequential_dataset(object):
         return self.testing_loader_A, self.testing_loader_B
     def __get_val_loader__(self):
         return None, None
-    
+    def __get_balanced_training_loader__(self):
+        return self.training_loader_balanced, None    
     def __get_info__(self): # TODO: MODIFY FOR MULTI TASKING IF THESE VARIABLE USED!
         return (self.L_, self.C_, self.num_class)

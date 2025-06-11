@@ -1,0 +1,7 @@
+*.pyc
+*__pycache__
+*Logs_
+*data
+*checkpoints
+*.vscode
+*build

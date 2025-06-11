@@ -549,7 +549,23 @@ class Logger(object):
         plt.clf()   
         plt.close(fig) 
 
-
+    def log_feature_emb(self, x, name):
+        td_ = x.squeeze(0).detach().cpu().numpy()
+        
+        fig = plt.figure(figsize=(12, 8), 
+            dpi = 600) 
+        axes = fig.subplots()
+        # Display the attention map
+        im = axes.imshow(td_, cmap='viridis', aspect='auto')
+        # Set axis labels and title
+        plt.xlabel("W")
+        plt.ylabel("H")
+        # Add a colorbar using the ScalarMappable
+        cbar = plt.colorbar(im)
+        # cbar.set_label(r'$\mathbf{z_c}$', fontweight='bold', fontsize=25)
+        plt.savefig(os.path.join(self.log_plot_path, f"embeddings_hypernet_{name}.png")) 
+        plt.clf()   
+        plt.close(fig)
 def plot_interp_acc_NNmerge( alpha_list, acc_list, save_name = "",
                             log_plot_path = None):
 
@@ -804,8 +820,11 @@ class ModelSaver_in_merge:
         self.logger.info(f'Validation improved (ACC: {np.abs(self.best_acc):.6f} --> {np.abs(acc):.6f}). {"Saving model ..." if self.save_cp else "No cp saving ..."}')
         if self.save_cp:
             torch.save(model.state_dict(), os.path.join(path, f'_checkpoint_{self.model_name}.pth'))
-        self.best_model = model.state_dict()
+            self.best_model = model.state_dict()
 
-    def get_best_model(self, model):
+    def get_best_model(self, model, path):
         assert self.best_model is not None
-        return model.load_state_dict(self.best_model)
+        model.load_state_dict(
+                torch.load(os.path.join(path, f'_checkpoint_{self.model_name}.pth'), weights_only=True ), 
+                strict=True)
+        return model

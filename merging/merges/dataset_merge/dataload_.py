@@ -2,11 +2,11 @@
 This is to get a dataloader for each domain dataset (k number)
 
 '''
-from merges.dataset_merge.data_factory_seq import Sequential_dataset
+from merging.merges.dataset_merge.data_factory_seq import CV_data
 
 def Load_dataset(argw):
     
-    data_ = Sequential_dataset(                     
+    data_ = CV_data(                     
                             path = argw["data_path"],
                             sub_dataset = argw["sub_dataset"],
                             permute_ = argw["permute"],
@@ -19,6 +19,8 @@ def Load_dataset(argw):
                                             "autoaug": argw["aa"],
                                             "random_crop_pase": argw["rcp"],
                                             "resize": argw["rs"]},
-                            multitasking = argw["multitasking"])
+                            multitasking = argw["multitasking"],
+                            train_test= argw["train_test"],
+                            fix_split_labels = argw["fix_split_labels"])
     return data_, data_.__get_info__()
 

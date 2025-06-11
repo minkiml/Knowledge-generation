@@ -1,5 +1,5 @@
 import numpy as np
-from merges.dataset_merge.AutoAugmentation.ops import *
+from merging.merges.dataset_merge.AutoAugmentation.ops import *
 
 
 class ImageNetPolicy(object):

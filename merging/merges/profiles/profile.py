@@ -20,8 +20,8 @@ import torch
 import torch.nn as nn
 import numpy as np
 from torch import fx as torch_FX
-from merges.profiles.lookup import *
-from merges import utils
+from merging.merges.profiles.lookup import *
+from merging.merges import utils
 
 class NNProfileBase:
     '''

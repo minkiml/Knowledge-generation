@@ -1,11 +1,11 @@
 import time
 import torch
 from tqdm import tqdm
-from merges.training_utils.logger_ import Value_averager, Logger, ModelSaver_in_merge
-from merges.training_utils.optimizer import opt_constructor
-from merges.trainings.validation import vali
+from merging.merges.training_utils.logger_ import Value_averager, Logger, ModelSaver_in_merge
+from merging.merges.training_utils.optimizer import opt_constructor
+from merging.merges.trainings.validation import vali
 import torch.nn.functional as F
-from merges.training_utils.grokfast import gradfilter_ma, gradfilter_ema
+from merging.merges.training_utils.grokfast import gradfilter_ma, gradfilter_ema
 
 
 
@@ -77,7 +77,7 @@ def basic(model,
                 per_itr_time = time.time()
 
                 logits = model(input)
-                loss = F.cross_entropy(logits, y.detach(), label_smoothing=0.45)
+                loss = F.cross_entropy(logits, y.detach(), label_smoothing=0.25)
                 loss.backward() 
 
                 if config.grokking:
@@ -115,4 +115,4 @@ def basic(model,
     g_logger.info("Training is done .... ")
     g_logger.info("")
     g_logger.info("Evaluation is making .... ")
-    return model
+    return m_saver.get_best_model(model,config.model_save_path)

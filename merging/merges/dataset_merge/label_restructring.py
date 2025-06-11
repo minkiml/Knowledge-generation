@@ -6,7 +6,7 @@ from torch.utils.data import Subset
 def help_label_restructuring(total_train, total_test,
                              
                              total_label_num = 10,
-                             split_p = [None, None]):
+                             split_p = [None, None], fixed_label_set = False):
     def create_relabel_subset(dataset, label_subset, label_map):
         # Get all indices where the target (label) belongs to the label subset
         indices = [i for i, (_, label) in enumerate(dataset) if label in label_subset]
@@ -29,8 +29,8 @@ def help_label_restructuring(total_train, total_test,
     random.shuffle(all_labels)
 
     # Randomly split the labels into two groups
-    label_subset_A = all_labels[:num_subset_A]
-    label_subset_B = all_labels[num_subset_A:num_subset_A + num_subset_B]
+    label_subset_A = [1, 4, 0, 9, 3] if fixed_label_set else all_labels[:num_subset_A]
+    label_subset_B = [5, 2, 7, 6, 8] if fixed_label_set else all_labels[num_subset_A:num_subset_A + num_subset_B]
 
     # print(f"Labels in A: {label_subset_A}")
     # print(f"Labels in B: {label_subset_B}")

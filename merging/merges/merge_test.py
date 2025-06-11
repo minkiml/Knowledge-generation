@@ -9,11 +9,11 @@ import numpy as np
 import logging
 
 from tqdm import tqdm
-from merges.merge import ModelMerger
-from merges.dataset_merge.dataload_ import Load_dataset
-from merges.trainings import trainings, validation
-from merges import utils
-from merges.networks import lenet, resnet
+from merging.merges.merge import ModelMerger
+from merging.merges.dataset_merge.dataload_ import Load_dataset
+from merging.merges.trainings import trainings, validation
+from merging.merges import utils
+from merging.merges.networks import lenet, resnet
 
 '''Basic test'''
 if __name__ == "__main__":
@@ -120,7 +120,9 @@ if __name__ == "__main__":
                     "aa": bool(config.data_transform_set[1]),
                     "rcp": bool(config.data_transform_set[2]),
                     "rs": bool(config.data_transform_set[3]),
-                    "multitasking": mt})
+                    "multitasking": mt,
+                    "train_test": False,
+                    "fix_split_labels": mt})
         if config.channel_in != C:
             config.channel_in = C
         if config.class_num != K: # TODO: FOR NOW WE SET 5:5 SUBSETS FOR MULTITASK SETTING (only the known domain scenario)

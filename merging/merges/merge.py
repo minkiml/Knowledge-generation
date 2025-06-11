@@ -13,12 +13,12 @@ import transformers
 from tqdm import tqdm
 from typing import Union
 
-from merges.profiles import profile
-from merges.profiles.profileTransformer import NNProfileLM
+from merging.merges.profiles import profile
+from merging.merges.profiles.profileTransformer import NNProfileLM
 
-from merges.matching import diff_matching_functions, metrics, matching_functions
-from merges.matching.rebasin import RebasinOperator
-from merges import utils
+from merging.merges.matching import diff_matching_functions, metrics, matching_functions
+from merging.merges.matching.rebasin import RebasinOperator
+from merging.merges import utils
 
 from transformers import AutoModel
 from torch.utils.data import DataLoader

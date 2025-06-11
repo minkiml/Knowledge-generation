@@ -4,8 +4,8 @@ import copy
 
 from tqdm import tqdm
 from merges.profiles.profile import NNProfileBase
-from merges import utils
-from merges.profiles.lookup import *
+from merging.merges import utils
+from merging.merges.profiles.lookup import *
 
 class RebasinOperator:
     def __init__(self, 

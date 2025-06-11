@@ -16,9 +16,9 @@ import numpy as np
 import torch
 import torch.nn as nn
 from transformers.utils import fx as trf_FX
-from merges.profiles.lookup import *
-from merges.profiles.profile import NNProfileBase
-from merges import utils
+from merging.merges.profiles.lookup import *
+from merging.merges.profiles.profile import NNProfileBase
+from merging.merges import utils
 
 import warnings
 warnings.filterwarnings("ignore", category=FutureWarning)
