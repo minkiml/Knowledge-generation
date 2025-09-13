@@ -7,7 +7,7 @@ from .hypernet import Hypernet_base
 class Hypernet_LSTM(Hypernet_base):
     def __init__(self, param_list, hidden_dim = 128, iteration = 1,
                  num_layer = 1, node_direction = "W", lowrank = False, rank = 4, type_ = "linear", learnable_emb = False,
-                 zero_init_emb = False,
+                 zero_init_emb = False, base = "mlp", cond_dim = 0, cond_emb_type = None, masking = False, hyper_grad = False,
                  device = "cpu"):
         """
         Wrapper to estimate the intrinsic dimensionality of the
@@ -17,8 +17,9 @@ class Hypernet_LSTM(Hypernet_base):
         :param device: cuda device id
         """
         super(Hypernet_LSTM, self).__init__(param_list, hidden_dim, iteration, node_direction, lowrank, rank, type_, learnable_emb,
-                                            zero_init_emb,
+                                            zero_init_emb, base, cond_dim, cond_emb_type, hyper_grad,
                                            device)
+        self.cond_dim = cond_dim
         self.num_layer = num_layer
         self.set_transformation()
         

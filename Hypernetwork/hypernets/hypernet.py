@@ -29,7 +29,8 @@ class Hypernet_base(nn.Module):
     def __init__(self, param_list, 
                  hidden_dim = 128, iteration = 1, 
                  node_direction = "W", lowrank = False, rank = 4, type_ = "lowrank",
-                 learnable_emb = False, zero_init_emb = False, 
+                 learnable_emb = False, zero_init_emb = False, base = "mlp", 
+                 cond_dim = 0, cond_emb_type = None, hyper_grad = False,
                  device = "cpu"):
         """
         Wrapper to estimate the intrinsic dimensionality of the
@@ -39,6 +40,7 @@ class Hypernet_base(nn.Module):
         :param device: cuda device id
         """
         super(Hypernet_base, self).__init__()
+        self.base = base
         self.param_list = param_list
         self.hidden_dim = hidden_dim
         self.depth = 0
@@ -62,6 +64,11 @@ class Hypernet_base(nn.Module):
         else:
             self.init_emb_lowrank()
         
+        self.hyper_grad = hyper_grad
+        self.cond_dim = cond_dim
+        self.cond_emb_type = cond_emb_type
+        if self.hyper_grad:
+            self.init_cond_emb()
     def generate_W(self, layer_att_name, outemb = False, decom = False, emb_dict = None):
         if decom:
             raise NotImplementedError("not fully implemented yet")
@@ -109,17 +116,30 @@ class Hypernet_base(nn.Module):
                         return self.store_bias[layer_att_name] # (out,)
             except:
                 raise ValueError(f"Somehow key is mismatching or bias for '{layer_att_name}' is not available ")
-    def forward_emb(self, emb_in = None):
+    def forward_emb(self, emb_in = None, t = None):
         if emb_in is None:
             if self.learnable_emb:
-                all_emb = self.all_emb + Create_SinusoidalEmb(self.depth, self.hidden_dim).unsqueeze(0).to(self.device)
+                all_emb = self.all_emb 
+                all_emb = all_emb if (all_emb.shape[1] == 1) or (self.base == "mlp") \
+                    else all_emb + Create_SinusoidalEmb(self.depth, self.hidden_dim).unsqueeze(0).to(self.device)
+                    
             else: all_emb = self.all_emb * 0.02
         else:
             if self.learnable_emb:
-                all_emb = emb_in + Create_SinusoidalEmb(self.depth, self.hidden_dim).unsqueeze(0).to(self.device)
+                all_emb = emb_in
+                all_emb = all_emb if (all_emb.shape[1] == 1) or (self.base == "mlp") \
+                    else all_emb + Create_SinusoidalEmb(self.depth, self.hidden_dim).unsqueeze(0).to(self.device)
             else: all_emb = emb_in * 0.02
-            
-        emb = self.forward_transformation(all_emb) # (1, depth, dz) 
+        if (self.hyper_grad):
+            assert (t is not None)
+            t = t.unsqueeze(0).expand(all_emb.shape[1], -1)
+            all_emb = torch.concat((all_emb, self.cond_emb(t).unsqueeze(0)), dim= -1)
+            all_emb = self.fusion_layer(all_emb)
+        emb = self.forward_transformation(all_emb) # (1, depth, dz) or (1,1,dz)
+        if (emb.shape[1] == 1) or (self.base == "mlp"):
+            # expand the depth dimension
+            # emb = emb.repeat(1,self.depth,1)
+            emb = emb.expand(1,self.depth,emb.shape[-1])
         self.emb_dict = dict()
         for i in range(1,self.depth+1):
             name = f"layer_{i}" 
@@ -214,24 +234,31 @@ class Hypernet_base(nn.Module):
             self.register_buffer(name, emb)
             self.emb_dict[name] = name
         self.all_emb = None
+        
     def init_emb_lowrank(self): #TODO --> CHECK THIS EMBEDDING SHAPE & HOW TO BATCH PROCESSING?
         # Instantiate H-emb object 
         ff_emb = FourierEmb(dim = self.hidden_dim,
-                ff_sigma=2048,
-                in_dim = 1)
-        
-        # Init embedding here
-        emb = ff_emb.create_fouieremb(H = self.depth, coord_type = "absolute").unsqueeze(0) # (1, depth, dz)
+                    ff_sigma=2048,
+                    in_dim = 1)
+        # print*()
+        if self.base == "mlp":
+            emb = ff_emb.create_fouieremb(H = 1, coord_type = "absolute").unsqueeze(0) # (1, 1, dz) shared across depth
+        else:
+            # Init embedding here
+            emb = ff_emb.create_fouieremb(H = self.depth, coord_type = "absolute").unsqueeze(0) # (1, depth, dz)
         if not self.learnable_emb: 
+            print("fixed input emb")
             if self.zero_init_emb:
                 emb = torch.zeros_like(emb)
                 print("zero init embeddings")
             self.register_buffer("all_emb", emb)
         else:
+            print("learnable input emb")
             if self.zero_init_emb:
                 emb = torch.zeros_like(emb)
                 print("zero init embeddings")
-            self.all_emb = nn.Parameter(emb, requires_grad= True) * 0.02
+            else: emb *= 0.02
+            self.all_emb = nn.Parameter(emb, requires_grad= True)
     def get_emb(self, layer_id, emb_dict = None):
         return getattr(self, self.emb_dict[f'layer_{layer_id}'] if emb_dict is None else emb_dict[f'layer_{layer_id}'])
 
@@ -241,6 +268,16 @@ class Hypernet_base(nn.Module):
     def set_transformation(self, outdim, indim = None, grad_ = False):
         raise NotImplementedError("Specific subclass (transformation) method")
     
+    def init_cond_emb(self):
+        if self.cond_emb_type == "linear":
+            self.cond_emb = nn.Linear(1, self.cond_dim)
+            self.fusion_layer = nn.Linear(self.cond_dim + self.hidden_dim, self.hidden_dim)
+        elif self.cond_emb_type == "fourier":
+            raise NotImplementedError("")
+        else:
+            self.cond_emb = nn.Identity()
+            self.fusion_layer = nn.Linear(1 + self.hidden_dim, self.hidden_dim)
+            
 def Create_SinusoidalEmb(length, dim):
     assert (dim % 2) == 0
     # Absolute positions
@@ -325,16 +362,16 @@ class WeightProjectionLayer(nn.Module):
                     self.projection_bias = nn.Linear(in_dim, self.shape[0], bias = False)
                 elif self.node_direction == "W":
                     self.linear_out_dim = self.linear_out_dim + 1
-            self.projection = nn.Sequential(nn.Linear(in_dim, self.linear_out_dim, bias = False),
+            self.projection = nn.Sequential(nn.Linear(in_dim, self.linear_out_dim, bias = True),
                                             nn.LayerNorm(self.linear_out_dim,elementwise_affine=False) if normalization else nn.Identity())
             
         else:
             if self.target_dim == 1:
                 # if target layer weight dim is 1 (e.g., layernorm), simply use linear layer as above
                 if bias: 
-                    self.projection_W_bias = nn.Sequential(nn.Linear(in_dim, self.shape[0], bias = False),
+                    self.projection_W_bias = nn.Sequential(nn.Linear(in_dim, self.shape[0], bias = True),
                                                            nn.LayerNorm(self.shape[0],elementwise_affine=False) if normalization else nn.Identity())
-                self.projection_W = nn.Sequential(nn.Linear(in_dim, self.shape[0], bias = False),
+                self.projection_W = nn.Sequential(nn.Linear(in_dim, self.shape[0], bias = True),
                                                   nn.LayerNorm(self.shape[0],elementwise_affine=False) if normalization else nn.Identity())
             else:
                 # if (self.rank > self.shape[0]) or (self.rank > self.shape[1]):
@@ -420,8 +457,8 @@ class WeightProjectionLayer(nn.Module):
                     # Vw, _ = torch.linalg.qr(Vw, mode='reduced') # (K^2, W, rank)
                      
                     if self.type_ == "svd":
-                        Sw = self.sigma(z)
-                        Sw = F.relu(Sw).view(1, 1, self.rank) # (1, 1, rank)
+                        Sw = torch.exp(self.sigma(z))
+                        Sw = Sw.view(1, 1, self.rank) # (1, 1, rank)
                         SVT = Vw * Sw # (K^2, W, rank)
                     else: Sw = None
 

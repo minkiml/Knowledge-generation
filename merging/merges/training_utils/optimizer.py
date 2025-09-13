@@ -2,6 +2,7 @@ import torch
 import logging
 import os
 import math
+import torch.nn as nn
 from torch.optim.optimizer import Optimizer
 
 def opt_constructor(scheduler,
@@ -28,19 +29,27 @@ def opt_constructor(scheduler,
         lr = lr
         param_groups = []
         for model in models:
-            model_param_groups = [
-                {
-                    'params': (p for n, p in model.named_parameters() if ('bias' not in n)),
+            if isinstance(model, nn.Parameter):
+                # handle nn.Parameter directly
+                param_groups.append({
+                    'params': [model],
                     'lr': lr
-                },
-                {
-                    'params': (p for n, p in model.named_parameters() if ('bias' in n)),
-                    'lr': lr
-                }
-            ]
+                })
+            elif isinstance(model, nn.Module):
+                model_param_groups = [
+                    {
+                        'params': (p for n, p in model.named_parameters() if ('bias' not in n)),
+                        'lr': lr
+                    },
+                    {
+                        'params': (p for n, p in model.named_parameters() if ('bias' in n)),
+                        'lr': lr
+                    }
+                ]
     
-            param_groups.extend(model_param_groups)
-        
+                param_groups.extend(model_param_groups)
+            else:
+                raise TypeError(f"Unsupported type {type(model)} in models list.")
         if full_KD is not None:
             param_groups.extend([
                 {

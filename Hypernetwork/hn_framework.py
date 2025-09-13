@@ -27,11 +27,15 @@ class Framework_HN(nn.Module):
                  lowrank = False,
                  rank = 4,
                  type_ = "lowrank",
-                 decomposition = False,
-                 learnable_emb = False,
-                 hypermatching = False,
-                 zero_init_emb = False,
-                 intrinsic_training = False):
+                 decomposition = False, # Directly reconstruct compressed layer matrices (e.g., low rank with svd)  
+                 learnable_emb = False, # Set the input embeddings to be learnable otherwise fixed
+                 hypermatching = False, # Share the hypernetwork across all candidate main nets
+                 zero_init_emb = False, # Init the input embeddings to zero
+                 intrinsic_training = False, # Leanring like learning intrinsic dimension (training embeddings only) 
+                 hyper_grad = False, # Whether to use hypernet with grad training
+                 grad_learning = False,
+                 max_T = None
+                 ):
         super(Framework_HN, self).__init__()
         self.device = device
         self.dir = dir
@@ -43,6 +47,9 @@ class Framework_HN(nn.Module):
         self.learnable_emb = learnable_emb if not intrinsic_training else True
         self.hypermatching = hypermatching if not intrinsic_training else False
         self.zero_init_emb = zero_init_emb
+        self.hyper_grad = hyper_grad
+        self.grad_learning = grad_learning
+        self.max_T = max_T
         
         if self.decomposition:
             self.compression = True
@@ -52,110 +59,211 @@ class Framework_HN(nn.Module):
         if self.lowrank:
             self.node_direction = "W"
         
-        self.init_Implicitnet(network, init_net)
+        self.init_Implicitnet(network, init_net
+                              )
         self.init_Hypernet(type = hypernet_base)
         
         if dir is not None:
             self.load_hypernet(name)
+        
+        if grad_learning:
+            self.set_copy_initparam()
     def forward(self, x):
         # Training forward?
         # generation -> reconstruction -> yield loss ? 
         pass
     
-    def forward_implicitnet(self, x):
-        self.forward_Hypernet("updating")
-        y = self.implicitnet[0](x)
+    def forward_implicitnet(self, x, t = None, isolate_hypernet = False, params = None, 
+                            grad_learning = False): # TODO add conditioinal t
+        if not grad_learning:
+            self.forward_Hypernet("updating", t= t, isolate_hypernet = isolate_hypernet, params = params)
+        else:
+            # set the main net with the non-learnable init params
+            self.forward_with_initparam()
+        y = self.implicitnet[0](x)# for grad --> how to get grad from these
         return y
     
-    def forward_Hypernet(self, mode = "updating", emb_in = None):
+    def forward_with_initparam(self):
+        for i, (name, base, localname) in enumerate(self.name_base_localname):
+            params = self.init_params[name]
+            params = params.detach().clone().requires_grad_(True)
+            setattr(base, localname, params)
+            
+    def forward_Hypernet(self, mode = "updating", 
+                         emb_in = None, t = None, 
+                         isolate_hypernet = False, 
+                         grad_learning = False,
+                         params = None): # TODO add conditioinal t
         # Generation of parameters (forward of hypernet) for the implicit net
         
         index = 0
         # Iterate over the layers
         losses = []
+        gen_prams = []
         errors = torch.tensor(0.).to(self.device)
         
-        if self.lowrank:
-            # forward processing of embeddings for all layers
-            self.hypernet.forward_emb(emb_in = emb_in)
-        
-        for i, (name, base, localname) in enumerate(self.name_base_localname):
-            if mode == "updating":
-                # Update the implicit net
-                params = self.hypernet.generate_W(name, decom = False, emb_dict = emb_in)
-                if self.init_params is not None:
-                    params = self.init_params[name] + params
-                setattr(base, localname, params)
+        if params is not None:
+            for i, (name, base, localname) in enumerate(self.name_base_localname):
+                if isolate_hypernet:
+                    param = params[i].detach().requires_grad_(True)
+                else: param = params[i].detach()
+                setattr(base, localname, param)
                 
-            elif mode == "learning":
-                params = self.hypernet.generate_W(name, decom = self.decomposition, emb_dict = emb_in)
-                if isinstance(params, list):
-                    # U, V, S = params[0], params[1], params[2]
+        else:
+            
+            if self.lowrank:
+                # forward processing of embeddings for all layers
+                self.hypernet.forward_emb(emb_in = emb_in, t = t)
+
+            for i, (name, base, localname) in enumerate(self.name_base_localname):
+                if mode == "updating":
+                    # Update the implicit net
+                    params = self.hypernet.generate_W(name, decom = False, emb_dict = emb_in) # TODO incorporate T
                     
-                    # Compute error (layer wise)
-                    for j, (pred, target) in enumerate(zip(params, [self.target_params[name]["U"], self.target_params[name]["V"], self.target_params[name]["S"] ])):
-                        if j == 0:
-                            error = torch.mean(torch.abs(pred - target))#((target - pred)**2).mean()
-                        else:
-                            error += torch.mean(torch.abs(pred - target)) # ((target - pred)**2).mean()
-                    errors += error # / 3.
-                else:
-                    if (self.init_params is not None) and not (self.compression) and not (self.decomposition):
+                    if (self.hyper_grad):
+                        params *= t
+                        
+                    if self.init_params is not None:
                         params = self.init_params[name] + params
                     
-                    errors +=  torch.mean(torch.abs(params - self.target_params[name])) #torch.mean(torch.abs(params - self.target_params[name])) #((self.target_params[name] - params)**2).mean()
+                    if isolate_hypernet:
+                        params = params.detach().clone().requires_grad_(True)
                         
-                    # Compute error (layer wise)
+                    setattr(base, localname, params)
                     
-                # Hypernetwork learning by reconstructing
-                
-                # Layer wise
-                # MSE
-                # loss = MSE_loss(target = self.target_params[name], 
-                #                 pred = params)
-                
-                # As a whole
-                # errors.append(torch.flatten((self.target_params[name] - params)**2))
-                
-        if mode == "learning":
-            return errors #/ (i+1)#torch.concat((errors), dim  = 0).mean()
-        else: 
-            return None 
+                elif mode == "learning":
+                    params = self.hypernet.generate_W(name, decom = self.decomposition, emb_dict = emb_in)
+                    if isinstance(params, list):
+                        # U, V, S = params[0], params[1], params[2]
+                        
+                        # Compute error (layer wise)
+                        for j, (pred, target) in enumerate(zip(params, [self.target_params[name]["U"], self.target_params[name]["V"], self.target_params[name]["S"] ])):
+                            if j == 0:
+                                error = torch.mean(torch.abs(pred - target))#((target - pred)**2).mean()
+                            else:
+                                error += torch.mean(torch.abs(pred - target)) # ((target - pred)**2).mean()
+                        errors += error # / 3.
+                    else:
+                        if (self.init_params is not None) and not (self.compression) and not (self.decomposition):
+                            params = self.init_params[name] + params
+                        
+                        errors +=  torch.mean(torch.abs(params - self.target_params[name])) #torch.mean(torch.abs(params - self.target_params[name])) #((self.target_params[name] - params)**2).mean()
+                            
+                        # Compute error (layer wise)
+                elif mode == "generating": 
+                    params = self.hypernet.generate_W(name, decom = False, emb_dict = emb_in)
+                    if grad_learning:
+                        pass
+                    else:
+                        if (self.hyper_grad):
+                            params *= t
+                        if isolate_hypernet:
+                                params = params.detach().clone().requires_grad_(True)
+                                
+                        if (self.init_params is not None) and not (self.compression) and not (self.decomposition):
+                            params = self.init_params[name] + params
+                    gen_prams.append(params)
+                    
+                elif mode == "hyperout": 
+                    params = self.hypernet.generate_W(name, decom = False, emb_dict = emb_in)
+                    
+                    if (self.hyper_grad):
+                        params *= t
+                    if isolate_hypernet:
+                            params = params.detach().clone().requires_grad_(True)
+                    gen_prams.append(params)
+                    # Hypernetwork learning by reconstructing
+                    
+                    # Layer wise
+                    # MSE
+                    # loss = MSE_loss(target = self.target_params[name], 
+                    #                 pred = params)
+                    
+                    # As a whole
+                    # errors.append(torch.flatten((self.target_params[name] - params)**2))
+                    
+            if mode == "learning":
+                return errors #/ (i+1)#torch.concat((errors), dim  = 0).mean()
+            elif (mode == "generating") or (mode == "hyperout"):
+                return gen_prams 
+            else: 
+                return None 
+    def reset_initparams(self, newset = None):
+        if newset is None:
+            for i, (name, base, localname) in enumerate(self.name_base_localname):
+                params = getattr(base, localname)
+                self.init_params[name] = params.clone().detach().requires_grad_(False).to(self.device)
+        else:
+            for i, (name, base, localname) in enumerate(self.name_base_localname):
+                if isinstance(newset, dict): 
+                    self.init_params[name] = newset[name].clone().detach().requires_grad_(False).to(self.device)
+                else:
+                    self.init_params[name] = newset[i].clone().detach().requires_grad_(False).to(self.device)
+
     
     def init_Hypernet(self, hypernet_fr = None, type = "mlp"):
         '''Init hypernetwork for the implicit target network'''
         if hypernet_fr is None:
-            self.hypernet = {"mlp": Hypernet_MLP(self.frame, hidden_dim=512, 
-                                                 iteration = 10, node_direction= self.node_direction, 
-                                                 lowrank = self.lowrank, rank = self.rank, 
-                                                 type_ = self.type_, learnable_emb=self.learnable_emb, 
-                                                 zero_init_emb = self.zero_init_emb,
-                                                 device = self.device),
-                             "transformer": Hypernet_TRF(self.frame, hidden_dim=512, 
-                                                         iteration = 40, num_layer = 3, 
-                                                         node_direction=self.node_direction, lowrank = self.lowrank, 
-                                                         rank = self.rank, type_ = self.type_, 
-                                                         learnable_emb=self.learnable_emb, 
-                                                         zero_init_emb = self.zero_init_emb, device = self.device, masking= True),
-                             "lstm": Hypernet_LSTM(self.frame, hidden_dim=512, 
-                                                    iteration = 1, num_layer = 3, 
-                                                    node_direction=self.node_direction, lowrank = self.lowrank, 
-                                                    rank = self.rank, type_ = self.type_, 
-                                                    learnable_emb=self.learnable_emb, zero_init_emb = self.zero_init_emb, 
-                                                    device = self.device),
-                             "mlpmixer": Hypernet_mixer(self.frame, hidden_dim=512, 
-                                                         iteration = 1, num_layer = 3, 
-                                                         node_direction=self.node_direction, lowrank = self.lowrank, 
-                                                         rank = self.rank, type_ = self.type_, 
-                                                         learnable_emb=self.learnable_emb, zero_init_emb = self.zero_init_emb,
-                                                         device = self.device)}[type]
+            hypernet = {"mlp": Hypernet_MLP,
+                        # (self.frame, hidden_dim=1024, 
+                        #                          iteration = 4, num_layer = 2, node_direction= self.node_direction, 
+                        #                          lowrank = self.lowrank, rank = self.rank, 
+                        #                          type_ = self.type_, learnable_emb=self.learnable_emb, 
+                        #                          zero_init_emb = self.zero_init_emb, cond_dim = 32, cond_emb_type = "linear",
+                        #                          hyper_grad = self.hyper_grad,
+                        #                          device = self.device),
+                             "transformer": Hypernet_TRF,
+                            #  (self.frame, hidden_dim=256, 
+                            #                              iteration = 2, num_layer = 3, 
+                            #                              node_direction=self.node_direction, lowrank = self.lowrank, 
+                            #                              rank = self.rank, type_ = self.type_, 
+                            #                              learnable_emb=self.learnable_emb, 
+                            #                              zero_init_emb = self.zero_init_emb, cond_dim = 32, cond_emb_type = "linear",
+                            #                              hyper_grad = self.hyper_grad,
+                            #                              device = self.device, masking= True),
+                             "lstm": Hypernet_LSTM,
+                            #  (self.frame, hidden_dim=512, 
+                            #                         iteration = 1, num_layer = 3, 
+                            #                         node_direction=self.node_direction, lowrank = self.lowrank, 
+                            #                         rank = self.rank, type_ = self.type_, 
+                            #                         learnable_emb=self.learnable_emb, zero_init_emb = self.zero_init_emb, 
+                            #                         cond_dim = 32, cond_emb_type = "linear", hyper_grad = self.hyper_grad,
+                            #                         device = self.device),
+                             "mlpmixer": Hypernet_mixer,
+                            #  (self.frame, hidden_dim=512, 
+                            #                              iteration = 1, num_layer = 3, 
+                            #                              node_direction=self.node_direction, lowrank = self.lowrank, 
+                            #                              rank = self.rank, type_ = self.type_, 
+                            #                              learnable_emb=self.learnable_emb, zero_init_emb = self.zero_init_emb,
+                            #                              cond_dim = 32, cond_emb_type = "linear", hyper_grad = self.hyper_grad,
+                            #                              device = self.device),
+                             "identity": Hypernet_Identity
+                            #  (self.frame, hidden_dim=1024, 
+                            #                      iteration = 4, node_direction= self.node_direction, 
+                            #                      lowrank = self.lowrank, rank = self.rank, 
+                            #                      type_ = self.type_, learnable_emb=self.learnable_emb, 
+                            #                      zero_init_emb = self.zero_init_emb,
+                            #                      cond_dim = 256, cond_emb_type = "linear", hyper_grad = self.hyper_grad,
+                            #                      device = self.device)
+                             }[type]
+            self.hypernet = hypernet(self.frame, hidden_dim=256, 
+                                    iteration = 2, num_layer = 3, 
+                                    node_direction=self.node_direction, lowrank = self.lowrank, 
+                                    rank = self.rank, type_ = self.type_, 
+                                    learnable_emb=self.learnable_emb, 
+                                    zero_init_emb = self.zero_init_emb, cond_dim = 32, cond_emb_type = "linear",
+                                    hyper_grad = self.hyper_grad, base = type,
+                                    device = self.device, masking= True)
             self.hypernet.to(self.device)
         else:
             with torch.no_grad():
                 #deep copy such that it has the same initialization as the passed arg
                 if not self.hypermatching:
+                    print("no shared net")
                     self.hypernet = copy.deepcopy(hypernet_fr.hypernet)
-                else: self.hypernet = hypernet_fr.hypernet # SHARE
+                else: 
+                    self.hypernet = hypernet_fr.hypernet # SHARE
+                    print("shared net init")
                 self.hypernet.to(self.device)
             
     def init_Implicitnet(self, network, init_net = None): # TODO when implementing it, need to consider how to design hypernetwork 
@@ -215,16 +323,17 @@ class Framework_HN(nn.Module):
         # Delete the network's param attributes after extracting the info
         for name, base, localname in self.name_base_localname:
             delattr(base, localname)
-
+    def set_copy_initparam(self):
+        self.init_param_0 = copy.deepcopy(self.init_params)
     ######################
     ######################
-    def vis_embeddings_out(self, vis_function, etc = ""):
+    def vis_embeddings_out(self, vis_function, etc = "", t=None):
         with torch.no_grad():
             self.implicitnet_train(False)
             for name, base, localname in self.name_base_localname:
                 if self.lowrank:
                     # forward processing of embeddings for all layers
-                    self.hypernet.forward_emb()
+                    self.hypernet.forward_emb(t=t)
                 emb_out = self.hypernet.generate_W(name, outemb = True, emb_dict = None)
                 if emb_out is not None:
                     # dictionary to tensor
@@ -271,23 +380,55 @@ class Framework_HN(nn.Module):
                 else:
                     self.hypernet.all_emb = subspace_emb.detach().clone()
 
-    def marterialize_Implicitnet(self, m, emb_in = None):# TODO 
+    def marterialize_Implicitnet(self, m, emb_in = None, t = None,
+                                 with_params = None):# TODO 
+        with torch.no_grad():
+            self.implicitnet_train(False)
+            self.hypernet.eval()
+            m.eval()
+            if with_params is None:
+                # update the mainnet based on the so-far trained hypernet then instantiate out
+                if self.lowrank:
+                    # forward processing of embeddings for all layers
+                    self.hypernet.forward_emb(emb_in=emb_in, t= t)
+                for name, param in m.named_parameters():
+                    gen_params = self.hypernet.generate_W(name, emb_dict = emb_in)
+                    
+                    if (self.hyper_grad):
+                        gen_params *= t
+                        
+                    if self.init_params is not None:
+                        gen_params = self.init_params[name] + gen_params
+                    param.data.copy_(gen_params)
+                # self.forward_Hypernet("updating")
+            else:
+                # if params to set is given
+                for name, param in m.named_parameters():
+                    param.data.copy_(with_params[name])
+            return m
+
+    def marterialize_Implicitnet_grad_learning(self, m, t = None,
+                                 with_params = None, lr = None):# TODO 
+        updated_params = dict()
         with torch.no_grad():
             self.implicitnet_train(False)
             self.hypernet.eval()
             m.eval()
             # update the mainnet based on the so-far trained hypernet then instantiate out
-            if self.lowrank:
-                # forward processing of embeddings for all layers
-                self.hypernet.forward_emb(emb_in=emb_in)
+            if t != 0.:
+                if self.lowrank:
+                    # forward processing of embeddings for all layers
+                    self.hypernet.forward_emb(emb_in=None, t= t)
             for name, param in m.named_parameters():
-                gen_params = self.hypernet.generate_W(name, emb_dict = emb_in)
-                if self.init_params is not None:
-                    gen_params = self.init_params[name] + gen_params
+                if t != 0.:
+                    gen_params = self.hypernet.generate_W(name, emb_dict = None)
+                    gen_params = with_params[name] + gen_params
+                else:
+                    gen_params = self.init_param_0[name]
+                updated_params[name] = gen_params
                 param.data.copy_(gen_params)
-            # self.forward_Hypernet("updating")
-            return m
-            
+ 
+            return m, copy.deepcopy(updated_params)
     def implicitnet_train(self, train = True):
         if train:
             self.implicitnet[0].train()
@@ -307,3 +448,34 @@ class Framework_HN(nn.Module):
         except:    
             print("No hypernet checkpoint exists in the designated location.")
             self.checkpoint = False
+
+    #################################################################################################################
+    #################################################################################################################
+    
+    # hyper grad
+    def compute_gt_grad(self, loss, lr):
+        # Compute grad of loss w.r.t the generated parameters
+
+        # iterate through layers
+        
+        list_of_grads = []
+        list_of_params = []
+        for i, (name, base, localname) in enumerate(self.name_base_localname):
+            params = getattr(base, localname)
+            list_of_params.append(params)
+            # print("compute grad", params.shape)
+        grads = torch.autograd.grad(loss, list_of_params, retain_graph=True, create_graph=False)
+        list_of_grads = [g.detach().clone() * lr * torch.tensor(-1.) for i, g in enumerate(grads)] # TODO check the alignment in indexing of param in opt
+        return list_of_grads, [t.detach().clone() for t in list_of_params]
+    # hyper grad
+    def get_generated_params(self, loss):
+        # Compute grad of loss w.r.t the generated parameters
+
+        # iterate through layers
+        
+        list_of_grads = []
+        list_of_params = []
+        for i, (name, base, localname) in enumerate(self.name_base_localname):
+            params = getattr(base, localname)
+            list_of_params.append(params)
+        return list_of_params

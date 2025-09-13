@@ -18,3 +18,50 @@ Variables
 8. loss of recon & predictive learning 
 
 9. Trnasformation type 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+TODO:
+
+## 1. incorporate T sampler (VV) 
+## 2. sampling t  (VV)
+## 3. param gene from hypernet is 0 when t = 0  (VV)
+
+
+4. think about incorporating longer h step other than h = 1  (not yet done)
+
+--------------------------------------
+
+4.2. run and debugging the code (VV) 
+4.3. eval  (VV)
+
+
+----------------------------------------
+
+5. impact of out of learned t E [0,1]
+
+5.1 think about incorporating longer h step other than h = 1  (VV)
+
+---------------------------------------- 6/17
+
+
+- check how it works
+
+- think about why not working well with lenet
+
+6. Continual learning? 
+7. it is learning trajectory 
+8. Conditional hypernet --> generalizing across input data? or diverse networks? 
+

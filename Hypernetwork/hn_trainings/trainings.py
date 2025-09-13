@@ -84,7 +84,7 @@ def prediction_train(hypernet,
                 logits = hypernet.forward_implicitnet(input)
                 # print(logits[0:2])
                 # print(logits)
-                loss = F.cross_entropy(logits, y.detach(), label_smoothing=0.25) / x.shape[0]
+                loss = F.cross_entropy(logits, y.detach(), label_smoothing=0.25) #/ x.shape[0]
                 loss.backward() 
                 #  ✅ (1) Gradient norm diagnostics
                 # print("🔍 Gradient norms per parameter:")
@@ -106,7 +106,8 @@ def prediction_train(hypernet,
                                                 loss_CE.avg,
                                                 obs1.avg, #0.,
                                                 obs2.avg) #0.)
-              
+            
+            # hypernet.reset_initparams() # TODO ************
             # g_logger.info(f"epoch[{epoch+1}/{config.fitting_epoch}], grad (p):{grad1.avg: .6f}")
             g_logger.info(f" epoch[{epoch+1}/{config.epochs_hn}] & speed per epoch: {(time.time() - epoch_time): .5f}, Loss_CE (g -> p):{loss_CE.avg: .4f}")
 

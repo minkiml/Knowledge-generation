@@ -46,7 +46,7 @@ if __name__ == '__main__':
     parser.add_argument("--dataset", type=str, default="ETTm1", choices=["ETTh1", "ETTh2", "ETTm1", "ETTm2", "electricity", 
                                                                          "traffic", "weather"])
     parser.add_argument('--mode', type=str, default='train', choices=['train', 'test', 'ct'])
-    parser.add_argument('--network', type=str, default='nlinear', choices=['nlinear', 'lstm', 'trf'])
+    parser.add_argument('--network', type=str, default='nlinear', choices=['nlinear', 'lstm', 'trf','tsmixer'])
     # Save path
     parser.add_argument('--model_save_path', type=str, default='checkpoints')
     parser.add_argument('--plots_save_path', type=str, default='plots')

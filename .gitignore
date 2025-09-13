@@ -5,3 +5,13 @@
 *checkpoints
 *.vscode
 *build
+
+
+# other files and folders
+
+*continual_learning
+*selfconditioning
+*utilities
+
+*test.py
+*main_self_conditioning.py

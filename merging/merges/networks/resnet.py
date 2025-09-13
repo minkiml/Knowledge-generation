@@ -2,6 +2,19 @@ import torch.nn as nn
 import torch.nn.init as init
 
 
+class reshape_(nn.Module):
+    def __init__(self):
+        super().__init__()
+        pass
+    def forward(self, x):
+        # x shape (B, C, H, W) -> (B, *, C)
+        return x.permute(0,2,3,1)
+class reverse_reshape_(nn.Module):
+    def __init__(self):
+        super().__init__()
+        pass
+    def forward(self,x):
+        return x.permute(0,3,1,2)
 def _weights_init(m):
     classname = m.__class__.__name__
     if isinstance(m, nn.Linear) or isinstance(m, nn.Conv2d):
@@ -16,10 +29,14 @@ class ResidualBlock(nn.Module):
     def __init__(self, in_channels, out_channels, stride=1, downsample=None):
         super(ResidualBlock, self).__init__()
         self.conv1 = conv3x3(in_channels, out_channels, stride)
-        self.bn1 = nn.BatchNorm2d(out_channels)
+        self.bn1 = nn.Sequential(reshape_(),
+                                        nn.LayerNorm(out_channels),
+                                        reverse_reshape_())#nn.BatchNorm2d(out_channels)
         self.relu1 = nn.ReLU(inplace=True)
         self.conv2 = conv3x3(out_channels, out_channels)
-        self.bn2 = nn.BatchNorm2d(out_channels)
+        self.bn2 = nn.Sequential(reshape_(),
+                                        nn.LayerNorm(out_channels),
+                                        reverse_reshape_())#nn.BatchNorm2d(out_channels)
         self.relu2 = nn.ReLU(inplace=True)
         if downsample is None:
             self.downsample = nn.Identity() 
@@ -45,7 +62,9 @@ class Downsample(nn.Module):
     def __init__(self, in_channels, out_channels, stride=1):
         super(Downsample, self).__init__()
         self.conv_down = conv3x3(in_channels, out_channels, stride=stride)
-        self.bn_down = nn.BatchNorm2d(out_channels)
+        self.bn_down = nn.Sequential(reshape_(),
+                                        nn.LayerNorm(out_channels),
+                                        reverse_reshape_())#nn.BatchNorm2d(out_channels)
 
     def forward(self, x):
         x = self.conv_down(x)
@@ -56,7 +75,9 @@ class Input_layer(nn.Module):
     def __init__(self, input_dim, in_channels):
         super(Input_layer, self).__init__()
         self.conv = conv3x3(input_dim, in_channels)
-        self.bn = nn.BatchNorm2d(in_channels)
+        self.bn = nn.Sequential(reshape_(),
+                                        nn.LayerNorm(in_channels),
+                                        reverse_reshape_())# nn.BatchNorm2d(in_channels)
         self.relu = nn.ReLU(inplace=True)
     def forward(self, x):
         out = self.conv(x)

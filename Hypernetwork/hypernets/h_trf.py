@@ -16,7 +16,7 @@ class AsymSwiGLU(nn.Module):
 class Hypernet_TRF(Hypernet_base):
     def __init__(self, param_list, hidden_dim = 128, iteration = 1,
                  num_layer = 1, node_direction = "W", lowrank = False, rank = 4, type_ = "linear", learnable_emb = False,
-                 device = "cpu", masking = False, zero_init_emb = False):
+                 device = "cpu", masking = False, zero_init_emb = False, cond_dim = 0, cond_emb_type = None, hyper_grad = False, base = "mlp"):
         """
         Wrapper to estimate the intrinsic dimensionality of the
         objective landscape for a specific task given a specific model
@@ -25,12 +25,13 @@ class Hypernet_TRF(Hypernet_base):
         :param device: cuda device id
         """
         super(Hypernet_TRF, self).__init__(param_list, hidden_dim, iteration, node_direction, lowrank, rank, type_, learnable_emb, 
-                                           zero_init_emb,
+                                           zero_init_emb, base, cond_dim, cond_emb_type, hyper_grad,
                                            device)
+        self.cond_dim = cond_dim
         self.masking = masking
         self.num_layer = num_layer
         self.set_transformation()
-        
+        self.final_emb_layer = nn.Linear(self.hidden_dim, self.hidden_dim) 
     def forward_transformation(self, emb):
         if self.masking:
             L = emb.size(1)
@@ -40,7 +41,7 @@ class Hypernet_TRF(Hypernet_base):
         for _ in range(self.iteration):
             for layer in self.TRF:
                 emb = layer(emb, src_mask)
-        return emb
+        return self.final_emb_layer(emb)
     
     def set_transformation(self):
         # Transformer network
@@ -48,9 +49,9 @@ class Hypernet_TRF(Hypernet_base):
         TRF = [nn.TransformerEncoderLayer( 
                                                  d_model = self.hidden_dim, 
                                                  dim_feedforward = self.hidden_dim * 3,
-                                                 nhead = 8,
+                                                 nhead = 16,
                                                  batch_first = True,
-                                                 activation= AsymSwiGLU(self.hidden_dim * 3, mask_num=i), #AsymSwiGLU(self.hidden_dim * 3, mask_num=i), #'gelu',
+                                                 activation= 'gelu', #AsymSwiGLU(self.hidden_dim * 3, mask_num=i), #AsymSwiGLU(self.hidden_dim * 3, mask_num=i), #'gelu',
                                                  device = self.device,
                                                  dropout = 0.0) \
                                                     for i in range(self.num_layer)]

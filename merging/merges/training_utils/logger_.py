@@ -809,15 +809,18 @@ class ModelSaver_in_merge:
         self.logger = g_logger
         self.model_name = model_name
         self.save_cp = save_cp
-    def __call__(self, acc, model, path):
+    def __call__(self, acc, model, path, t = None):
         if acc > self.best_acc:
-            self.save_checkpoint(acc, model, path)
+            self.save_checkpoint(acc, model, path, t = t)
             self.best_acc = acc
         else:
             self.logger.info(f'No validation improvement - ACC_p: best ({np.abs(self.best_acc):.6f}%) and current ({np.abs(acc):.6f}%). ')
-
-    def save_checkpoint(self, acc, model, path):
+            if t is not None:
+                self.logger.info(f'at t={t} ')
+    def save_checkpoint(self, acc, model, path, t = None):
         self.logger.info(f'Validation improved (ACC: {np.abs(self.best_acc):.6f} --> {np.abs(acc):.6f}). {"Saving model ..." if self.save_cp else "No cp saving ..."}')
+        if t is not None:
+                self.logger.info(f'at t={t} ')
         if self.save_cp:
             torch.save(model.state_dict(), os.path.join(path, f'_checkpoint_{self.model_name}.pth'))
             self.best_model = model.state_dict()

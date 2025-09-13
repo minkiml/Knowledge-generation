@@ -1,12 +1,3 @@
-'''
-MLP-Mixer: 
-Original vision paper -- Mlp-mixer: An all-mlp architecture for vision
-Time series adaption -- TSMixer: An All-MLP Architecture for Time Series Forecasting
-
-Source of used code: https://github.com/ditschuk/pytorch-tsmixer
-
-MLP-based model in transformer architecture
-'''
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -14,13 +5,7 @@ from collections.abc import Callable
 import torch
 import torch.nn.functional as F
 from torch import Tensor, nn
-from gradientNNs.TSNets import util_blocks
 
-def time_to_feature(x: torch.Tensor) -> torch.Tensor:
-    """Converts a time series tensor to a feature tensor."""
-    return x.permute(0, 2, 1)
-
-feature_to_time = time_to_feature
 
 class TimeBatchNorm2d(nn.BatchNorm1d):
     """A batch normalization layer that normalizes over the last two dimensions of a
@@ -402,8 +387,26 @@ class ConditionalMixerLayer(nn.Module):
         return x
 
 
+def time_to_feature(x: torch.Tensor) -> torch.Tensor:
+    """Converts a time series tensor to a feature tensor."""
+    return x.permute(0, 2, 1)
+
+
+feature_to_time = time_to_feature
+class Permute(nn.Module):
+    def __init__(self, permutation_order):
+        super(Permute, self).__init__()
+        self.permutation_order = permutation_order
+
+    def forward(self, x):
+        return x.permute(*self.permutation_order)
+
 class TSMixer(nn.Module):
-    """TSMixer model for time series analysis.
+    """TSMixer model for time series forecasting.
+
+    This model uses a series of mixer layers to process time series data,
+    followed by a linear transformation to project the output to the desired
+    prediction length.
 
     Attributes:
         mixer_layers: Sequential container of mixer layers.
@@ -411,6 +414,7 @@ class TSMixer(nn.Module):
 
     Args:
         sequence_length: Length of the input time series sequence.
+        prediction_length: Desired length of the output prediction sequence.
         input_channels: Number of input channels.
         output_channels: Number of output channels. Defaults to None.
         activation_fn: Activation function to use. Defaults to "relu".
@@ -424,22 +428,32 @@ class TSMixer(nn.Module):
     def __init__(
         self,
         sequence_length: int,
+        prediction_length: int,
         input_channels: int,
         output_channels: int = None,
-        num_class: int = 1,
-        activation_fn: str = "relu",
-        num_blocks: int = 2,
-        dropout_rate: float = 0.1,
+        activation_fn: str = "gelu",
+        num_blocks: int = 4,
+        dropout_rate: float = 0.05,
         ff_dim: int = 64,
         normalize_before: bool = True,
-        norm_type: str = "batch",
-        task = ""
+        norm_type: str = "layer",
+        
+        channel_dep = True,
+        revin = False
     ):
         super().__init__()
-        self.task = task
+        self.channel_dep = channel_dep
+        self.revin = revin
         # Transform activation_fn to callable
         activation_fn = getattr(F, activation_fn)
 
+        
+        # self.inspection_stem_layer = nn.Linear(input_channels, input_channels, bias = False)
+        
+        self.inspection_stem_layer = nn.Sequential(
+                                                Permute((0,2,1)),
+                                                nn.Linear(sequence_length,sequence_length, bias = False),
+                                                Permute((0,2,1)))
         # Transform norm_type to callable
         assert norm_type in {
             "batch",
@@ -461,10 +475,7 @@ class TSMixer(nn.Module):
         )
 
         # Temporal projection layer
-        if self.task == "fault_det_rec":
-            self.predictor = util_blocks.linear_reconstructor(in_channels=output_channels, out_chnnels=num_class, last_channel=True)
-        else:
-            self.predictor = util_blocks.linear_predictor(in_channels=output_channels, num_classes=num_class, last_channel=True)
+        self.temporal_projection = nn.Linear(sequence_length, prediction_length)
 
     def _build_mixer(
         self, num_blocks: int, input_channels: int, output_channels: int, **kwargs
@@ -499,23 +510,61 @@ class TSMixer(nn.Module):
         Returns:
             torch.Tensor: The output tensor after processing by the model.
         """
-        x = self.mixer_layers(x_hist)
-        x = self.predictor(x)
+        B, L, C = x_hist.shape
+        if not self.channel_dep:
+            x_hist = x_hist.permute(0,2,1)
+            x_hist = x_hist.reshape(-1, 1, L).permute(0,2,1)
+        
+        if self.revin:
+            x_mean = torch.mean(x_hist, dim=1, keepdim=True)
+            x_hist = x_hist - x_mean
+            x_std=torch.sqrt(torch.var(x_hist, dim=1, keepdim=True)+ 1e-5)
+            x_hist = x_hist / x_std
+        
+        x_hist = self.inspection_stem_layer(x_hist)
+        
+        x = self.mixer_layers(x_hist) # (B, L, C)
+
+        x_temp = feature_to_time(x)
+        x_temp = self.temporal_projection(x_temp) # (B, C, L)
+        x = time_to_feature(x_temp) # (B, L, C)
+        
+        if self.revin: 
+            x = x * x_std
+            x = x + x_mean
+        
+        if not self.channel_dep:
+            x = x.permute(0,2,1).reshape(B,C,-1).permute(0,2,1)
+            
         return x
 
-class TSmixer_network(util_blocks.baseline_network):
-    '''
-    Wrapper class
-    '''
-    def __init__(self, in_channels, num_class, seq_length, task, revin, channel_dep):
-        super(TSmixer_network, self).__init__(in_channels, num_class, task, revin, channel_dep)    
-        self.C_true = num_class
-        self.C_ = self.C_true if channel_dep else 1
-        self.network = TSMixer( sequence_length = seq_length,
-                                input_channels = in_channels,
-                                output_channels = 64,
-                                num_class= self.C_,
-                                num_blocks= 4,
-                                dropout_rate = 0.15,
-                                ff_dim = 192,
-                                task = task)
+if __name__ == "__main__":
+    m = TSMixer(720, 96, 2, output_channels=4)
+    x = torch.randn(3, 720, 2)
+    y = m(x)
+    
+    print(m)
+    print(x)
+    def model_size(m, model_name, ):
+        print(f"Model: {model_name}")
+        total_param = 0
+        for name, param in m.named_parameters():
+            num_params = param.numel()
+            total_param += num_params
+            print(f"{name}: {num_params} parameters")
+        
+        print(f"Total parameters in {model_name}: {total_param}")
+        print("")
+        return total_param
+
+    def model_inf(model, model_name):
+        
+        model_name = [model_name]
+        m = [model]
+        total_p = 0
+        for i, name in enumerate(model_name):
+            param_ = model_size(m[i], name) if m[i] is not None else 0
+            total_p += param_
+        print(f"Total trainable parameters in {model_name[0]}: {total_p}")
+        
+    model_inf(m, "test net")

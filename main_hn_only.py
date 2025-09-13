@@ -1,7 +1,6 @@
 '''
-Main run file for Hypernetwork for non-grad training
+Main run file for Hypernetwork
 '''
-
 import os
 import argparse
 import torch
@@ -170,7 +169,7 @@ if __name__ == "__main__":
     
     
     models = []
-    for i in range(3 if config.init_hyper else 2):
+    for i in range(3 if config.init_hyper else 1):
         network = {"lenet": mg.LeNet(input_dim = config.channel_in, output_dim = config.class_num, dataset=config.dataset, batchnorm = False),
                    "mlp": mg.MLP(input_dim = config.channel_in, output_dim = config.class_num, dataset=config.dataset),
                "resnet": mg.ResNet18_cifar(input_dim = config.channel_in, num_classes=config.class_num, zero_init = False, multiplier = 2),
@@ -239,7 +238,6 @@ if __name__ == "__main__":
     # Hypernetwork.weights_vis(model_A, model_B, dir = config.plots_save_path, title = "original_A_and_B") 
     plot_1d(model_A, model_B, data_A[1], num_alpha=21, log_plot_path=config.plots_save_path,
             device = device, title= "original_data_A", testing_data_B=data_B[1] if config.multitask else data_A[1])
-    
     # if config.init_hyper:
     #     init_model = Interpolation(model_A, model_B, alpha=0.5)
     #     init_model = init_model.to(device)
@@ -377,12 +375,9 @@ if __name__ == "__main__":
     if config.intrinsic_training:
         Hypernetwork.Subspace_plot_1d(hypernet_A, hypernet_B, model_A, data_A[1], num_alpha=21, log_plot_path=config.plots_save_path,
                 device = device, title= "hn_data_A_subspace", testing_data_B= data_B[1] if config.multitask else data_A[1])
-        
+    # ## Loop 
     Hypernetwork.Hypernet_plot_1d2(hypernet_A, hypernet_B, model_A, data_A[1], num_alpha=21, log_plot_path=config.plots_save_path,
             device = device, title= "hn_data_A_gen_only", testing_data_B= data_B[1] if config.multitask else data_A[1])
-        
-    # ## Loop 
-    
     # # Merge hypernets (merging framework)
     # ...
     

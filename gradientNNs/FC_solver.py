@@ -127,7 +127,13 @@ class Solver(object):
                             )
         
     def build_model(self):
-        self.model = {"nlinear": TSNets.NLinear(self.look_back, self.horizon, revin = False)}[self.network]
+        self.model = {"nlinear": TSNets.NLinear(self.look_back, self.horizon, revin = False),
+                      "tsmixer": TSNets.TSMixer(sequence_length = self.look_back,
+                                                prediction_length = self.horizon,
+                                                input_channels = self.input_c if self.channel_dependence else 1,
+                                                output_channels = self.input_c if self.channel_dependence else 1,
+                                                channel_dep=self.channel_dependence,
+                                                revin=True)}[self.network] # TODO ADD MORE NETWORK
         ipe = len(self.training_data)
         self.optimizer, self.lr_scheduler, self.wd_scheduler = opt_constructor(self.scheduler,
                                                                             self.model,
@@ -242,7 +248,7 @@ class Solver(object):
         self.logger.info(f"Forecasting result - MSE: {MSE_} & MAE: {MAE_}")
     
 
-    def analysis(self, num = 5):
+    def analysis(self, num = 10):
         if os.path.exists(os.path.join(str(self.model_save_path), '_checkpoint.pth')):
             self.model.load_state_dict(
                 torch.load(
@@ -273,6 +279,13 @@ class Solver(object):
                 score.backward()
                 
                 prediction_error = F.mse_loss(y_pred, y, reduction='none').detach().cpu()[0,:,0]
+                
+                
+                grad_in_frequency = torch.fft.rfft(input[0,:,0].detach().cpu(), dim = 0, norm = "ortho")
+                
+                L = input[0,:,0].shape[0]
+                freq = torch.fft.rfftfreq(L).detach().cpu()  # frequency bins (normalized: 0 to 0.5)
+
                 grad_input = input.grad.detach().cpu()[0,:,0]
                 # print(grad_input)
                 grad_weights = get_weight_grad(self.model, 0)
@@ -331,21 +344,67 @@ class Solver(object):
               
                 input_seq = input.detach().cpu()[0,:,0]
                 output_seq = y_pred.detach().cpu()[0,:,0]
+                gt_output_seq = y[0:1].detach().cpu()[0,:,0]
+                
                 x_input = range(len(input_seq))
                 x_output = range(len(input_seq), len(input_seq) + len(output_seq))
                 
+                # c = grad_input
+                # points = np.array([x_np, y_np]).T.reshape(-1, 1, 2)
+                # segments = np.concatenate([points[:-1], points[1:]], axis=1)
                 # --- Subplot 3: original input sequence line plot ---
                 axes[2].plot(x_input, input_seq, color='red', label='Input Seq')
-                axes[2].plot(x_output, output_seq, color='green', label='Prediction')
+                
+                
+                axes[2].plot(x_output, gt_output_seq, color='orange', label='Ground truth')
+                axes[2].plot(x_output, output_seq, color='green', label='Prediction', alpha = 0.6)
+                
                 axes[2].set_title("Input → Output Sequence")
                 axes[2].set_ylabel("Amplitude")
                 axes[2].set_xlabel("Time Step")
-                axes[2].legend(loc='upper right')
+                axes[2].legend(loc='upper left')
 
 
                 # --- Save figure ---
                 plt.tight_layout()
                 plt.savefig(os.path.join(self.plots_save_path, f"{j}_gradients_weights_inputs_{i}.png"))
+                plt.clf()
+                plt.close(fig)
+                
+                # 
+                
+                grad_mean = (grad_weights.T).mean(dim = 1)
+                grad_mean = grad_mean.numpy()
+                
+                # fig = plt.figure(figsize=(12, 8), 
+                #     dpi = 600) 
+                fig, axes = plt.subplots(1, 3, figsize=(18, 6), dpi=600)
+                # axes = fig.subplots()
+                
+                sns.histplot(grad_mean, bins=30, kde=True, ax=axes[0])  # KDE adds smooth curve
+                plt.title("Distribution of weights_in  Means")
+                plt.xlabel("Mean Value")
+                plt.ylabel("Frequency")
+                plt.grid(True)
+                
+                # Step 3: Second subplot: line plot
+                axes[1].plot(prediction_error, color='orange')
+                axes[1].set_title(f"MSE: average mse = {prediction_error.mean()}")
+                axes[1].set_xlabel("X")
+                axes[1].set_ylabel("Y")
+                axes[1].grid(True)
+                
+                
+                magnitude = grad_in_frequency.abs()  # |FFT|
+
+                axes[2].plot(magnitude)
+                axes[2].set_xlabel("Normalized Frequency")
+                axes[2].set_ylabel("Magnitude")
+                axes[2].set_title("Magnitude Spectrum dy/dx")
+                axes[2].grid(True)
+                
+                plt.tight_layout()
+                plt.savefig(os.path.join(self.plots_save_path, f"{j}grad_weight_dist{i}.png"))
                 plt.clf()
                 plt.close(fig)
             # fig = plt.figure(figsize=(12, 8), 

@@ -6,7 +6,7 @@ import copy
 from merging.merges.utils import BatchNorm2d
 from torch import nn
 from merging.merges import utils
-def prediction_vali(f, data_loader_test, device, yield_loss = False):
+def prediction_vali(f, data_loader_test, device, yield_loss = False, t = None):
     f.implicitnet_train(False)
     f.train(False)
     with torch.no_grad():
@@ -18,7 +18,7 @@ def prediction_vali(f, data_loader_test, device, yield_loss = False):
                 y = torch.cat((batches[0][1],batches[1][1]), dim = 0)
             input = x.to(device)######################
             y = y.to(device)
-            logit = f.forward_implicitnet(input)
+            logit = f.forward_implicitnet(input, t=t)
             
             loss = F.cross_entropy(logit, y.detach(), label_smoothing=0.25)
             loss = loss.unsqueeze(0)
