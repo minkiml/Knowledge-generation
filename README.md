@@ -1,9 +1,2 @@
-# Base_ML
-This repository contains experimental and prelimiary codes for generation and integration of Neural networks. They are mainly for me to explore ... and fundamentals of Neural networks and their mechanisms ...
-
-This code repository is also a playground for me to quickly explore and test some of isntant ideas for my upconing journey of second PhD study.    
-
-## What is generation and integration of neural networks?
-
-
-Contain base code scripts to easily implement specific ones up on
+# Short introduction to the repo
+This repository contains basic experimental and prelimiary codes for various ML concepts and ideas, including neural network merging (e.g., ref [1]), hyper networks and meta learning (e.g., ref [2] and ref [3]), neural network connectivity (e.g., ref [4]). This is essentially a playground for me to explore the ML concepts and test some of isntant ideas to ultimately study generation of knowledge, i.e., meaningful neural networks.    
