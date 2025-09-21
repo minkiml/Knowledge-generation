@@ -5,10 +5,10 @@ This repository contains basic experimental and prelimiary codes for various ML 
 
 
 ## Getting started
-Clone the OCIR repository via git as follows:
+Clone the repository via git as follows:
 
 ```clone
-git clone https://github.com/minkiml/OCIR-learning.git
+git clone https://github.com/minkiml/Knowledge-generation.git
 ```
 
 Then, install requirements as follows:
