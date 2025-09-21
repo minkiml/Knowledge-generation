@@ -2,7 +2,7 @@
 export CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7
 runs=4
 
-data_path_name='./datasets/forecasting_data'
+data_path_name=""
 data=ETTm2
 random_seed=1024
 run_id=12

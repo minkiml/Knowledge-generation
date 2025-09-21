@@ -2,7 +2,7 @@
 export CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7
 runs=1
 
-data_path_name='/home/mkim332/data/general_ts/forecasting' #'./datasets/forecasting_data'
+data_path_name=""
 data=ETTm1
 
 random_seed=1024

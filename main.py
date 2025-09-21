@@ -20,7 +20,7 @@ if __name__ == "__main__":
     parser.add_argument("--log_path", type=str, default='./merges/Logs_/logs_', 
                         help="path to save all the products from each trainging")
     parser.add_argument("--id_", type=int, default=1002, help="run id")
-    parser.add_argument("--data_path", type=str, default='/data/home/mkim332/ts_project1/datas/sImages',  
+    parser.add_argument("--data_path", type=str, default="",  
                         help="path to grab data")
     parser.add_argument("--dataset", type=str, default="CIFAR-10", choices=["MNIST", "CIFAR-10", 
                                                                              "CIFAR-100", "SVHN", 

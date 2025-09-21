@@ -1,7 +1,7 @@
 # sh ./Forecasting/scripts/Weather.sh
 export CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7
 runs=4
-data_path_name='./datasets/forecasting_data'
+data_path_name=""
 data=weather
 pred_lens=(96 192 336 720)
 run_id=12

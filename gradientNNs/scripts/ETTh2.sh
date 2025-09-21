@@ -1,7 +1,7 @@
 # sh ./Forecasting/scripts_exp/ETThs.sh
 export CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7
 runs=1
-data_path_name='./datasets/forecasting_data'
+data_path_name=""
 data=ETTh2
 
 look_back=360
